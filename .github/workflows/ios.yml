@@ -51,7 +51,7 @@ jobs:
             <key>CFBundleExecutable</key>
             <string>naux</string>
             <key>CFBundleIdentifier</key>
-            <string>com.example.naux</string>
+            <string>com.buendiabenedict.app</string>
             <key>CFBundleInfoDictionaryVersion</key>
             <string>6.0</string>
             <key>CFBundleName</key>
