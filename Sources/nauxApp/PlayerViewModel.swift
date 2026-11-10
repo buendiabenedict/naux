@@ -79,18 +79,19 @@ final class PlayerViewModel: ObservableObject {
             if isStale { saveBookmark(for: url) }
             scanFolder(url)
         } catch {
-            // Keep bookmark for a future retry; clear UI state for now.
+            // Keep bookmark for a future retry.
             folderURL = nil
             hasFolderAccess = false
             folderName = nil
             tracks = []
-            currentTrack = nil
+            stopPlayback(clearCurrent: true)
+            errorMessage = "Could not restore folder. Please select it again."
         }
     }
 
     private func saveBookmark(for url: URL) {
         do {
-            let data = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+            let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(data, forKey: "savedFolderBookmark")
         } catch {
             // Ignore bookmark save failures; folder still works for this session.
