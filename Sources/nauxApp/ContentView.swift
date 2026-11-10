@@ -6,7 +6,13 @@ struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
     @State private var showImporter = false
     @State private var showFullPlayer = false
-    @State private var blurTrackID: UUID?
+    @State private var searchText = ""
+
+    private var filteredTracks: [Track] {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return player.tracks }
+        return player.tracks.filter { $0.title.localizedCaseInsensitiveContains(q) }
+    }
 
     var body: some View {
         NavigationStack {
@@ -24,6 +30,7 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("naux")
+            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search music")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -98,39 +105,37 @@ struct ContentView: View {
 
     private var trackList: some View {
         List {
-            ForEach(player.tracks) { track in
-                Button {
-                    blurTrackID = track.id
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        player.play(track)
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            if blurTrackID == track.id { blurTrackID = nil }
+            Section {
+                ForEach(filteredTracks) { track in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            player.play(track)
                         }
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        ArtworkView(data: track.artworkData, size: 48)
-                        Text(track.title)
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Spacer()
-                        if player.currentTrack?.id == track.id {
-                            PlayingIndicator(isPlaying: player.isPlaying)
+                    } label: {
+                        HStack(spacing: 12) {
+                            ArtworkView(data: track.artworkData, size: 48)
+                            Text(track.title)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Spacer()
+                            if player.currentTrack?.id == track.id {
+                                PlayingIndicator(isPlaying: player.isPlaying)
+                            }
                         }
+                        .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 4)
-                    .blur(radius: blurTrackID == track.id ? 6 : 0)
-                    .animation(.easeInOut(duration: 0.2), value: blurTrackID)
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color(white: 0.12))
+                    .listRowSeparator(.hidden)
                 }
-                .listRowBackground(Color.black)
-                .listRowSeparator(.hidden)
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black)
+        .animation(.easeInOut(duration: 0.25), value: player.currentTrack?.id)
+        .animation(.easeInOut(duration: 0.2), value: searchText)
     }
 
     private var playerBar: some View {
@@ -173,19 +178,7 @@ private struct FullPlayerView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            HStack {
-                Button { dismiss() } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.title3)
-                        .foregroundStyle(.white)
-                        .padding(8)
-                }
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.top, 16)
-
-            Spacer()
+            Spacer().frame(height: 24)
 
             ZStack {
                 trackDisplay
@@ -195,9 +188,10 @@ private struct FullPlayerView: View {
                         removal: .move(edge: transitionForward ? .leading : .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.96))
                     ))
             }
-            .blur(radius: 0)
-            .animation(.easeInOut(duration: 0.28), value: player.currentTrack?.id)
+            .animation(.easeInOut(duration: 0.3), value: player.currentTrack?.id)
             .clipped()
+
+            Spacer()
 
             VStack(spacing: 6) {
                 Slider(
@@ -232,7 +226,7 @@ private struct FullPlayerView: View {
             HStack(spacing: 48) {
                 Button {
                     transitionForward = false
-                    withAnimation(.easeInOut(duration: 0.28)) { player.previous() }
+                    withAnimation(.easeInOut(duration: 0.3)) { player.previous() }
                 } label: {
                     Image(systemName: "backward.fill")
                         .font(.title2)
@@ -243,7 +237,7 @@ private struct FullPlayerView: View {
                 }
                 Button {
                     transitionForward = true
-                    withAnimation(.easeInOut(duration: 0.28)) { player.next() }
+                    withAnimation(.easeInOut(duration: 0.3)) { player.next() }
                 } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
@@ -252,7 +246,7 @@ private struct FullPlayerView: View {
             .foregroundStyle(.white)
             .buttonStyle(.plain)
 
-            Spacer()
+            Spacer().frame(height: 32)
         }
         .padding(.bottom, 24)
         .background(Color.black.ignoresSafeArea())

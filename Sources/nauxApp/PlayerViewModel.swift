@@ -2,6 +2,7 @@ import Foundation
 import AVFoundation
 import UIKit
 import Combine
+import MediaPlayer
 
 struct Track: Identifiable, Equatable {
     let id = UUID()
@@ -32,6 +33,11 @@ final class PlayerViewModel: ObservableObject {
     private var endObserver: Any?
     private var folderURL: URL?
     private var hasFolderAccess = false
+    private var remoteCommandsConfigured = false
+
+    init() {
+        configureRemoteCommands()
+    }
 
     private nonisolated func stopFolderAccess(url: URL?) {
         guard let url else { return }
@@ -127,6 +133,7 @@ final class PlayerViewModel: ObservableObject {
             player.volume = Float(volume)
             isPlaying = true
         }
+        updateNowPlayingInfo()
     }
 
     func next() {
@@ -149,9 +156,14 @@ final class PlayerViewModel: ObservableObject {
 
     func seek(to time: Double) {
         guard let player else { return }
-        let target = max(0, time)
+        let target = max(0, min(time, duration > 0 ? duration : time))
         let cm = CMTime(seconds: target, preferredTimescale: 600)
-        player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero)
+        player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                self?.progress = target
+                self?.updateNowPlayingInfo()
+            }
+        }
         progress = target
     }
 
@@ -170,16 +182,18 @@ final class PlayerViewModel: ObservableObject {
         isPlaying = true
         addObservers(for: item)
         player?.play()
+        updateNowPlayingInfo()
     }
 
     private func addObservers(for item: AVPlayerItem) {
-        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
             Task { @MainActor in
                 self.progress = time.seconds.isFinite ? time.seconds : 0
                 let dur = item.duration.seconds
                 if dur.isFinite && dur > 0 { self.duration = dur }
+                self.updateNowPlayingPlaybackTime()
             }
         }
         endObserver = NotificationCenter.default.addObserver(
@@ -201,7 +215,85 @@ final class PlayerViewModel: ObservableObject {
         isPlaying = false
         progress = 0
         duration = 0
-        if clearCurrent { currentTrack = nil }
+        if clearCurrent {
+            currentTrack = nil
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        } else {
+            updateNowPlayingInfo()
+        }
+    }
+
+    private func configureRemoteCommands() {
+        guard !remoteCommandsConfigured else { return }
+        remoteCommandsConfigured = true
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.isEnabled = true
+        center.pauseCommand.isEnabled = true
+        center.togglePlayPauseCommand.isEnabled = true
+        center.nextTrackCommand.isEnabled = true
+        center.previousTrackCommand.isEnabled = true
+        center.changePlaybackPositionCommand.isEnabled = true
+
+        center.playCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if !self.isPlaying { self.togglePlay() }
+            }
+            return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                if self.isPlaying { self.togglePlay() }
+            }
+            return .success
+        }
+        center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.togglePlay() }
+            return .success
+        }
+        center.nextTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.next() }
+            return .success
+        }
+        center.previousTrackCommand.addTarget { [weak self] _ in
+            Task { @MainActor in self?.previous() }
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            Task { @MainActor in self?.seek(to: event.positionTime) }
+            return .success
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        guard let track = currentTrack else {
+            MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+            return
+        }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: track.title,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress,
+            MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
+        ]
+        if duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        if let data = track.artworkData, let image = UIImage(data: data) {
+            info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    private func updateNowPlayingPlaybackTime() {
+        guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+        if duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     private func removeObservers() {
