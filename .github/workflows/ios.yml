@@ -64,6 +64,10 @@ jobs:
             <string>1</string>
             <key>LSRequiresIPhoneOS</key>
             <true/>
+            <key>UIBackgroundModes</key>
+            <array>
+              <string>audio</string>
+            </array>
             <key>MinimumOSVersion</key>
             <string>16.0</string>
             <key>UIDeviceFamily</key>

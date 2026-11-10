@@ -189,24 +189,15 @@ private struct FullPlayerView: View {
 
             Spacer()
 
-            ArtworkView(data: player.currentTrack?.artworkData, size: min(UIScreen.main.bounds.width - 64, 320), cornerRadius: 16)
-                .shadow(radius: 20)
-
-            VStack(spacing: 6) {
-                Text(player.currentTrack?.title ?? "")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let folder = player.folderName {
-                    Text(folder)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                }
+            ZStack {
+                trackDisplay
+                    .id(player.currentTrack?.id)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
             }
-            .padding(.horizontal, 24)
+            .animation(.easeInOut(duration: 0.28), value: player.currentTrack?.id)
 
             VStack(spacing: 6) {
                 Slider(value: $player.progress, in: 0...max(player.duration, 1)) { editing in
@@ -248,6 +239,30 @@ private struct FullPlayerView: View {
         .background(Color.black.ignoresSafeArea())
     }
 
+    private var trackDisplay: some View {
+        VStack(spacing: 20) {
+            ArtworkView(data: player.currentTrack?.artworkData, size: min(UIScreen.main.bounds.width - 64, 320), cornerRadius: 16)
+                .shadow(color: .black.opacity(0.4), radius: 20)
+
+            VStack(spacing: 6) {
+                Text(player.currentTrack?.title ?? "")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                if let folder = player.folderName {
+                    Text(folder)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        .blur(radius: 0)
+    }
+
     private func format(_ seconds: Double) -> String {
         guard seconds.isFinite && seconds >= 0 else { return "0:00" }
         let s = Int(seconds)
@@ -268,10 +283,10 @@ private struct ArtworkView: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Color.white.opacity(0.1)
+                    Color(white: 0.2)
                     Image(systemName: "music.note")
-                        .font(.system(size: size * 0.4))
-                        .foregroundStyle(.white.opacity(0.5))
+                        .font(.system(size: size * 0.35))
+                        .foregroundStyle(.white.opacity(0.45))
                 }
             }
         }
