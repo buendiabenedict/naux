@@ -71,7 +71,7 @@ final class PlayerViewModel: ObservableObject {
         guard let data = UserDefaults.standard.data(forKey: "savedFolderBookmark") else { return }
         do {
             var isStale = false
-            let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+            let url = try URL(resolvingBookmarkData: data, options: [.withoutUI], relativeTo: nil, bookmarkDataIsStale: &isStale)
             stopFolderAccess()
             folderURL = url
             hasFolderAccess = url.startAccessingSecurityScopedResource()
@@ -79,13 +79,18 @@ final class PlayerViewModel: ObservableObject {
             if isStale { saveBookmark(for: url) }
             scanFolder(url)
         } catch {
-            UserDefaults.standard.removeObject(forKey: "savedFolderBookmark")
+            // Keep bookmark for a future retry; clear UI state for now.
+            folderURL = nil
+            hasFolderAccess = false
+            folderName = nil
+            tracks = []
+            currentTrack = nil
         }
     }
 
     private func saveBookmark(for url: URL) {
         do {
-            let data = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+            let data = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
             UserDefaults.standard.set(data, forKey: "savedFolderBookmark")
         } catch {
             // Ignore bookmark save failures; folder still works for this session.
