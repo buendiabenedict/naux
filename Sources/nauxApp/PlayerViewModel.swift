@@ -31,9 +31,20 @@ final class PlayerViewModel: ObservableObject {
     private var folderURL: URL?
     private var hasFolderAccess = false
 
-    deinit {
+    private nonisolated func stopFolderAccess(url: URL?) {
+        guard let url else { return }
+        url.stopAccessingSecurityScopedResource()
+    }
+
+    func cleanup() {
         removeObservers()
-        stopFolderAccess()
+        if hasFolderAccess {
+            stopFolderAccess(url: folderURL)
+        }
+        hasFolderAccess = false
+        folderURL = nil
+        player?.pause()
+        player = nil
     }
 
     func loadFolder(_ url: URL) {
@@ -179,9 +190,10 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func stopFolderAccess() {
-        if hasFolderAccess, let folderURL {
-            folderURL.stopAccessingSecurityScopedResource()
+        if hasFolderAccess {
+            stopFolderAccess(url: folderURL)
         }
         hasFolderAccess = false
+        folderURL = nil
     }
 }

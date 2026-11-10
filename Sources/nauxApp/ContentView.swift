@@ -53,6 +53,7 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .tint(.white)
+        .onDisappear { player.cleanup() }
     }
 
     private var header: some View {
