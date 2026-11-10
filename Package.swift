@@ -7,7 +7,7 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
-        .library(name: "naux", targets: ["nauxApp"])
+        .library(name: "nauxApp", targets: ["nauxApp"])
     ],
     targets: [
         .target(
