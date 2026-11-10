@@ -117,9 +117,7 @@ struct ContentView: View {
                             .lineLimit(1)
                         Spacer()
                         if player.currentTrack?.id == track.id {
-                            Image(systemName: player.isPlaying ? "waveform" : "pause.fill")
-                                .font(.caption)
-                                .foregroundStyle(.white.opacity(0.8))
+                            PlayingIndicator(isPlaying: player.isPlaying)
                         }
                     }
                     .padding(.vertical, 4)
@@ -152,13 +150,9 @@ struct ContentView: View {
             Spacer()
             Button(action: { player.togglePlay() }) {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
+                    .font(.title2)
                     .foregroundStyle(.white)
-            }
-            .buttonStyle(.plain)
-            Button(action: { player.next() }) {
-                Image(systemName: "forward.fill")
-                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
         }
@@ -173,6 +167,9 @@ struct ContentView: View {
 private struct FullPlayerView: View {
     @ObservedObject var player: PlayerViewModel
     @Environment(\.dismiss) private var dismiss
+    @State private var isSeeking = false
+    @State private var seekValue: Double = 0
+    @State private var transitionForward = true
 
     var body: some View {
         VStack(spacing: 24) {
@@ -186,6 +183,7 @@ private struct FullPlayerView: View {
                 Spacer()
             }
             .padding(.horizontal)
+            .padding(.top, 16)
 
             Spacer()
 
@@ -193,20 +191,35 @@ private struct FullPlayerView: View {
                 trackDisplay
                     .id(player.currentTrack?.id)
                     .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
+                        insertion: .move(edge: transitionForward ? .trailing : .leading).combined(with: .opacity),
+                        removal: .move(edge: transitionForward ? .leading : .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.96))
                     ))
             }
+            .blur(radius: 0)
             .animation(.easeInOut(duration: 0.28), value: player.currentTrack?.id)
+            .clipped()
 
             VStack(spacing: 6) {
-                Slider(value: $player.progress, in: 0...max(player.duration, 1)) { editing in
-                    if !editing { player.seek(to: player.progress) }
-                }
+                Slider(
+                    value: Binding(
+                        get: { isSeeking ? seekValue : player.progress },
+                        set: { seekValue = $0 }
+                    ),
+                    in: 0...max(player.duration, 1),
+                    onEditingChanged: { editing in
+                        if editing {
+                            isSeeking = true
+                            seekValue = player.progress
+                        } else {
+                            player.seek(to: seekValue)
+                            isSeeking = false
+                        }
+                    }
+                )
                 .tint(.white)
 
                 HStack {
-                    Text(format(player.progress))
+                    Text(format(isSeeking ? seekValue : player.progress))
                     Spacer()
                     Text(format(max(player.duration, 0)))
                 }
@@ -217,7 +230,10 @@ private struct FullPlayerView: View {
             .padding(.horizontal, 24)
 
             HStack(spacing: 48) {
-                Button(action: player.previous) {
+                Button {
+                    transitionForward = false
+                    withAnimation(.easeInOut(duration: 0.28)) { player.previous() }
+                } label: {
                     Image(systemName: "backward.fill")
                         .font(.title2)
                 }
@@ -225,7 +241,10 @@ private struct FullPlayerView: View {
                     Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                         .font(.system(size: 64))
                 }
-                Button(action: player.next) {
+                Button {
+                    transitionForward = true
+                    withAnimation(.easeInOut(duration: 0.28)) { player.next() }
+                } label: {
                     Image(systemName: "forward.fill")
                         .font(.title2)
                 }
@@ -237,6 +256,15 @@ private struct FullPlayerView: View {
         }
         .padding(.bottom, 24)
         .background(Color.black.ignoresSafeArea())
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    if value.translation.height > 90 && abs(value.translation.width) < 120 {
+                        dismiss()
+                    }
+                }
+        )
     }
 
     private var trackDisplay: some View {
@@ -260,7 +288,6 @@ private struct FullPlayerView: View {
             }
             .padding(.horizontal, 24)
         }
-        .blur(radius: 0)
     }
 
     private func format(_ seconds: Double) -> String {
@@ -283,7 +310,7 @@ private struct ArtworkView: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Color(white: 0.2)
+                    Color(white: 0.22)
                     Image(systemName: "music.note")
                         .font(.system(size: size * 0.35))
                         .foregroundStyle(.white.opacity(0.45))
@@ -291,6 +318,36 @@ private struct ArtworkView: View {
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+}
+
+private struct PlayingIndicator: View {
+    let isPlaying: Bool
+    @State private var animate = false
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(0..<3, id: \.self) { i in
+                Capsule()
+                    .fill(Color.white.opacity(0.85))
+                    .frame(width: 3, height: isPlaying ? (animate ? CGFloat([10, 6, 14][i]) : CGFloat([4, 10, 6][i])) : 4)
+            }
+        }
+        .frame(width: 14, height: 14)
+        .onAppear { updateAnimation() }
+        .onChange(of: isPlaying) { _ in updateAnimation() }
+    }
+
+    private func updateAnimation() {
+        if isPlaying {
+            withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
+                animate = true
+            }
+        } else {
+            withAnimation(.easeOut(duration: 0.2)) {
+                animate = false
+            }
+        }
     }
 }

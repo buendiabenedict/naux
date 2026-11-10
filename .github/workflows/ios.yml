@@ -83,9 +83,52 @@ jobs:
               <string>UIInterfaceOrientationLandscapeLeft</string>
               <string>UIInterfaceOrientationLandscapeRight</string>
             </array>
+            <key>CFBundleIcons</key>
+            <dict>
+              <key>CFBundlePrimaryIcon</key>
+              <dict>
+                <key>CFBundleIconFiles</key>
+                <array>
+                  <string>AppIcon60x60</string>
+                </array>
+              </dict>
+            </dict>
           </dict>
           </plist>
           PLIST
+
+          python3 - <<'PY'
+          import struct, zlib
+          w=h=120
+          def chunk(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
+          def px(x,y):
+            cx=cy=60
+            dx=x-cx; dy=y-cy
+            d2=dx*dx+dy*dy
+            if d2>55*55: return (0,0,0,0)
+            r=max(0,255-int(d2*0.03))
+            g=max(0,180-int(d2*0.02))
+            b=255
+            # simple note
+            in_note=False
+            if 48<=x<=52 and 35<=y<=75: in_note=True
+            if 62<=x<=66 and 30<=y<=70: in_note=True
+            if 48<=x<=66 and 30<=y<=36: in_note=True
+            if 62<=x<=70 and 66<=y<=76: in_note=True
+            if (x-46)**2 + (y-75)**2 <= 7*7: in_note=True
+            if (x-60)**2 + (y-70)**2 <= 7*7: in_note=True
+            if in_note: return (255,255,255,255)
+            return (r,g,b,255)
+          raw=b''
+          for y in range(h):
+            raw+=b'\x00'
+            for x in range(w): raw+=bytes(px(x,y))
+          with open("Payload/naux.app/AppIcon60x60@2x.png",'wb') as f:
+            f.write(b'\x89PNG\r\n\x1a\n')
+            f.write(chunk(b'IHDR', struct.pack('>IIBBBBB',w,h,8,6,0,0,0)))
+            f.write(chunk(b'IDAT', zlib.compress(raw,9)))
+            f.write(chunk(b'IEND', b''))
+          PY
 
           echo "APPL????" > "$APP_DIR/PkgInfo"
           rm -f naux-unsigned.ipa
