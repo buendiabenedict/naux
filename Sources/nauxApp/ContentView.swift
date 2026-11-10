@@ -176,8 +176,8 @@ private struct FullPlayerView: View {
     @State private var transitionForward = true
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer().frame(height: 24)
+        VStack(spacing: 0) {
+            Spacer().frame(height: 28)
 
             ZStack {
                 trackDisplay
@@ -190,7 +190,7 @@ private struct FullPlayerView: View {
             .animation(.easeInOut(duration: 0.3), value: player.currentTrack?.id)
             .clipped()
 
-            Spacer()
+            Spacer().frame(height: 20)
 
             HStack(spacing: 48) {
                 Button {
@@ -215,7 +215,7 @@ private struct FullPlayerView: View {
             .foregroundStyle(.white)
             .buttonStyle(.plain)
 
-            Spacer().frame(height: 32)
+            Spacer()
         }
         .padding(.bottom, 24)
         .background(Color.black.ignoresSafeArea())
@@ -231,25 +231,17 @@ private struct FullPlayerView: View {
     }
 
     private var trackDisplay: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 10) {
             ArtworkView(data: player.currentTrack?.artworkData, size: min(UIScreen.main.bounds.width - 64, 320), cornerRadius: 16)
                 .shadow(color: .black.opacity(0.4), radius: 20)
 
-            VStack(spacing: 6) {
-                Text(player.currentTrack?.title ?? "")
-                    .font(.title3)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(2)
-                if let folder = player.folderName {
-                    Text(folder)
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.6))
-                        .lineLimit(1)
-                }
-            }
-            .padding(.horizontal, 24)
+            Text(player.currentTrack?.title ?? "")
+                .font(.title3)
+                .fontWeight(.semibold)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .padding(.horizontal, 24)
         }
     }
 
