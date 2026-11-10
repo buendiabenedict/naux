@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -15,10 +16,23 @@ jobs:
         run: sudo xcode-select -switch /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
       - name: Show Xcode version
         run: xcodebuild -version
-      - name: List schemes
-        run: xcodebuild -list
-      - name: Build
+      - name: Build unsigned app
         run: |
-          SCHEME=$(xcodebuild -list -json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); s=(d.get('workspace') or {}).get('schemes') or (d.get('project') or {}).get('schemes') or []; print(next((x for x in s if x!='Package'), s[0] if s else 'naux'))")
+          set -euo pipefail
+          SCHEME=$(xcodebuild -list -json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); s=(d.get('workspace') or {}).get('schemes') or (d.get('project') or {}).get('schemes') or []; print(next((x for x in s if x!='Package'), s[0] if s else 'nauxApp'))")
           echo "Using scheme: $SCHEME"
-          xcodebuild -scheme "$SCHEME" -destination 'platform=iOS Simulator,name=iPhone 16' -configuration Debug build CODE_SIGNING_ALLOWED=NO
+          xcodebuild -scheme "$SCHEME" -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          APP_PATH=$(find build -type d -name '*.app' | head -n 1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle produced" >&2
+            exit 1
+          fi
+          echo "Found app: $APP_PATH"
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qry naux-unsigned.ipa Payload
+      - name: Upload unsigned IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: naux-unsigned-ipa
+          path: naux-unsigned.ipa

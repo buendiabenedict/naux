@@ -7,10 +7,10 @@ let package = Package(
         .iOS(.v17)
     ],
     products: [
-        .library(name: "nauxApp", targets: ["nauxApp"])
+        .executable(name: "nauxApp", targets: ["nauxApp"])
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "nauxApp",
             path: "Sources/nauxApp"
         )
