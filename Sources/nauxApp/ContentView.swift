@@ -5,6 +5,7 @@ import UIKit
 struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
     @State private var showImporter = false
+    @State private var showFullPlayer = false
 
     var body: some View {
         NavigationStack {
@@ -18,16 +19,28 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) {
                 if player.currentTrack != nil {
                     playerBar
+                        .onTapGesture { showFullPlayer = true }
                 }
             }
             .navigationTitle("naux")
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button("Reload", systemImage: "arrow.clockwise") { player.reload() }
-                        .disabled(player.folderName == nil)
-                    Button("Folder", systemImage: "folder") { showImporter = true }
+                    Button {
+                        player.reload()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .disabled(player.folderName == nil)
+
+                    Button {
+                        showImporter = true
+                    } label: {
+                        Image(systemName: "folder")
+                    }
                 }
             }
+            .background(Color.black.ignoresSafeArea())
             .fileImporter(
                 isPresented: $showImporter,
                 allowedContentTypes: [.folder],
@@ -41,6 +54,11 @@ struct ContentView: View {
                 }
             }
         }
+        .preferredColorScheme(.dark)
+        .tint(.white)
+        .fullScreenCover(isPresented: $showFullPlayer) {
+            FullPlayerView(player: player)
+        }
         .onDisappear { player.cleanup() }
     }
 
@@ -49,15 +67,18 @@ struct ContentView: View {
             Spacer()
             Image(systemName: "music.note.list")
                 .font(.system(size: 40))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.6))
             Text(player.folderName == nil ? "No music loaded" : "No audio files")
                 .font(.headline)
+                .foregroundStyle(.white)
             Text(player.folderName == nil ? "Select a folder with your music." : "Choose another folder or reload.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.6))
                 .multilineTextAlignment(.center)
             Button("Choose Folder") { showImporter = true }
                 .buttonStyle(.borderedProminent)
+                .tint(.white.opacity(0.2))
+                .foregroundStyle(.white)
                 .padding(.top, 4)
             if let error = player.errorMessage {
                 Text(error)
@@ -69,84 +90,146 @@ struct ContentView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
     }
 
     private var trackList: some View {
         List {
-            if let folder = player.folderName {
-                Section {
-                    Text(folder)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Section {
-                ForEach(player.tracks) { track in
-                    Button { player.play(track) } label: {
-                        HStack(spacing: 12) {
-                            ArtworkView(data: track.artworkData, size: 44)
-                            Text(track.title)
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                            Spacer()
-                            if player.currentTrack?.id == track.id {
-                                Image(systemName: player.isPlaying ? "waveform" : "pause.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.tint)
-                            }
+            ForEach(player.tracks) { track in
+                Button { player.play(track) } label: {
+                    HStack(spacing: 12) {
+                        ArtworkView(data: track.artworkData, size: 48)
+                        Text(track.title)
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                        Spacer()
+                        if player.currentTrack?.id == track.id {
+                            Image(systemName: player.isPlaying ? "waveform" : "pause.fill")
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.8))
                         }
-                        .padding(.vertical, 2)
                     }
+                    .padding(.vertical, 4)
                 }
+                .listRowBackground(Color.black)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(Color.black)
     }
 
     private var playerBar: some View {
-        VStack(spacing: 8) {
-            Slider(value: $player.progress, in: 0...max(player.duration, 1)) { editing in
-                if !editing { player.seek(to: player.progress) }
-            }
-
-            HStack(spacing: 12) {
-                ArtworkView(data: player.currentTrack?.artworkData, size: 40)
+        HStack(spacing: 12) {
+            ArtworkView(data: player.currentTrack?.artworkData, size: 44)
+            VStack(alignment: .leading, spacing: 2) {
                 Text(player.currentTrack?.title ?? "")
                     .font(.subheadline)
                     .fontWeight(.medium)
+                    .foregroundStyle(.white)
                     .lineLimit(1)
+                Text(player.folderName ?? "")
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button(action: { player.togglePlay() }) {
+                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+            Button(action: { player.next() }) {
+                Image(systemName: "forward.fill")
+                    .foregroundStyle(.white)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color(white: 0.12))
+        .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
+    }
 
+}
+
+private struct FullPlayerView: View {
+    @ObservedObject var player: PlayerViewModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 24) {
+            HStack {
+                Button { dismiss() } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.title3)
+                        .foregroundStyle(.white)
+                        .padding(8)
+                }
                 Spacer()
+            }
+            .padding(.horizontal)
 
+            Spacer()
+
+            ArtworkView(data: player.currentTrack?.artworkData, size: min(UIScreen.main.bounds.width - 64, 320), cornerRadius: 16)
+                .shadow(radius: 20)
+
+            VStack(spacing: 6) {
+                Text(player.currentTrack?.title ?? "")
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                if let folder = player.folderName {
+                    Text(folder)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 24)
+
+            VStack(spacing: 6) {
+                Slider(value: $player.progress, in: 0...max(player.duration, 1)) { editing in
+                    if !editing { player.seek(to: player.progress) }
+                }
+                .tint(.white)
+
+                HStack {
+                    Text(format(player.progress))
+                    Spacer()
+                    Text(format(max(player.duration, 0)))
+                }
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.6))
+                .monospacedDigit()
+            }
+            .padding(.horizontal, 24)
+
+            HStack(spacing: 48) {
                 Button(action: player.previous) {
                     Image(systemName: "backward.fill")
+                        .font(.title2)
                 }
-                .buttonStyle(.plain)
-
                 Button(action: player.togglePlay) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.title3)
+                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                        .font(.system(size: 64))
                 }
-                .buttonStyle(.plain)
-
                 Button(action: player.next) {
                     Image(systemName: "forward.fill")
+                        .font(.title2)
                 }
-                .buttonStyle(.plain)
             }
+            .foregroundStyle(.white)
+            .buttonStyle(.plain)
 
-            HStack {
-                Text(format(player.progress))
-                Spacer()
-                Text(format(max(player.duration, 0)))
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
+            Spacer()
         }
-        .padding(12)
-        .background(.bar)
-        .overlay(alignment: .top) { Divider() }
+        .padding(.bottom, 24)
+        .background(Color.black.ignoresSafeArea())
     }
 
     private func format(_ seconds: Double) -> String {
@@ -159,6 +242,7 @@ struct ContentView: View {
 private struct ArtworkView: View {
     let data: Data?
     let size: CGFloat
+    var cornerRadius: CGFloat = 8
 
     var body: some View {
         Group {
@@ -168,13 +252,14 @@ private struct ArtworkView: View {
                     .scaledToFill()
             } else {
                 ZStack {
-                    Color.secondary.opacity(0.15)
+                    Color.white.opacity(0.1)
                     Image(systemName: "music.note")
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: size * 0.4))
+                        .foregroundStyle(.white.opacity(0.5))
                 }
             }
         }
         .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
     }
 }
