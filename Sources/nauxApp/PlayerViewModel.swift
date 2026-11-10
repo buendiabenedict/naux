@@ -1,11 +1,13 @@
 import Foundation
 import AVFoundation
+import UIKit
 import Combine
 
 struct Track: Identifiable, Equatable {
     let id = UUID()
     let url: URL
     let title: String
+    let artworkData: Data?
 
     static func == (lhs: Track, rhs: Track) -> Bool {
         lhs.id == rhs.id
@@ -53,30 +55,55 @@ final class PlayerViewModel: ObservableObject {
         folderURL = url
         hasFolderAccess = url.startAccessingSecurityScopedResource()
         folderName = url.lastPathComponent
+        scanFolder(url)
+    }
 
+    func reload() {
+        guard let folderURL else { return }
+        errorMessage = nil
+        scanFolder(folderURL)
+    }
+
+    private func scanFolder(_ url: URL) {
+        let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "flac", "aiff", "caf", "m4b", "alac"]
         do {
             let files = try FileManager.default.contentsOfDirectory(
                 at: url,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
             )
-            let mp3s = files
-                .filter { $0.pathExtension.lowercased() == "mp3" }
+            let audioFiles = files
+                .filter { audioExts.contains($0.pathExtension.lowercased()) }
                 .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
 
-            tracks = mp3s.map { Track(url: $0, title: $0.deletingPathExtension().lastPathComponent) }
+            tracks = audioFiles.map { file in
+                Track(
+                    url: file,
+                    title: file.deletingPathExtension().lastPathComponent,
+                    artworkData: Self.extractArtwork(from: file)
+                )
+            }
 
             if tracks.isEmpty {
-                errorMessage = "No MP3 files found in this folder."
-                stopPlayback(clearCurrent: true)
-            } else {
-                stopPlayback(clearCurrent: true)
+                errorMessage = "No audio files found in this folder."
             }
+            stopPlayback(clearCurrent: true)
         } catch {
             tracks = []
             stopPlayback(clearCurrent: true)
             errorMessage = "Could not read folder: \(error.localizedDescription)"
         }
+    }
+
+    private static func extractArtwork(from url: URL) -> Data? {
+        let asset = AVURLAsset(url: url)
+        let keys = [AVMetadataKey.commonKeyArtwork]
+        let items = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: .commonKeyArtwork, keySpace: .common)
+        if let data = items.first?.dataValue { return data }
+        for item in asset.metadata {
+            if item.commonKey == .commonKeyArtwork, let data = item.dataValue { return data }
+        }
+        return nil
     }
 
     func play(_ track: Track) {

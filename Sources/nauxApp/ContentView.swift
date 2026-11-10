@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import UIKit
 
 struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
@@ -21,7 +22,9 @@ struct ContentView: View {
             }
             .navigationTitle("naux")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button("Reload", systemImage: "arrow.clockwise") { player.reload() }
+                        .disabled(player.folderName == nil)
                     Button("Folder", systemImage: "folder") { showImporter = true }
                 }
             }
@@ -47,9 +50,9 @@ struct ContentView: View {
             Image(systemName: "music.note.list")
                 .font(.system(size: 40))
                 .foregroundStyle(.secondary)
-            Text(player.folderName == nil ? "No music loaded" : "No MP3 files")
+            Text(player.folderName == nil ? "No music loaded" : "No audio files")
                 .font(.headline)
-            Text(player.folderName == nil ? "Select a folder with your MP3s." : "Choose another folder.")
+            Text(player.folderName == nil ? "Select a folder with your music." : "Choose another folder or reload.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -80,7 +83,8 @@ struct ContentView: View {
             Section {
                 ForEach(player.tracks) { track in
                     Button { player.play(track) } label: {
-                        HStack {
+                        HStack(spacing: 12) {
+                            ArtworkView(data: track.artworkData, size: 44)
                             Text(track.title)
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
@@ -91,6 +95,7 @@ struct ContentView: View {
                                     .foregroundStyle(.tint)
                             }
                         }
+                        .padding(.vertical, 2)
                     }
                 }
             }
@@ -104,7 +109,8 @@ struct ContentView: View {
                 if !editing { player.seek(to: player.progress) }
             }
 
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
+                ArtworkView(data: player.currentTrack?.artworkData, size: 40)
                 Text(player.currentTrack?.title ?? "")
                     .font(.subheadline)
                     .fontWeight(.medium)
@@ -147,5 +153,28 @@ struct ContentView: View {
         guard seconds.isFinite && seconds >= 0 else { return "0:00" }
         let s = Int(seconds)
         return String(format: "%d:%02d", s / 60, s % 60)
+    }
+}
+
+private struct ArtworkView: View {
+    let data: Data?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let data, let uiImage = UIImage(data: data) {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Color.secondary.opacity(0.15)
+                    Image(systemName: "music.note")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
