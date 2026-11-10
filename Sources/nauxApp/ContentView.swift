@@ -118,7 +118,7 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(player.currentTrack?.id == track.id ? Color(white: 0.18) : Color(white: 0.12))
+                    .listRowBackground(player.currentTrack?.id == track.id ? Color(white: 0.24) : Color(white: 0.12))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
                     .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
