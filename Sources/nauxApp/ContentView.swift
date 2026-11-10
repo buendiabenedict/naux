@@ -102,10 +102,9 @@ struct ContentView: View {
         List {
             Section {
                 ForEach(filteredTracks) { track in
+                    let selected = player.currentTrack?.id == track.id
                     Button {
-                        withAnimation(.easeInOut(duration: 0.35)) {
-                            player.play(track)
-                        }
+                        player.play(track)
                     } label: {
                         HStack(spacing: 12) {
                             ArtworkView(data: track.artworkData, size: 48)
@@ -118,7 +117,11 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(player.currentTrack?.id == track.id ? Color(white: 0.24) : Color(white: 0.12))
+                    .listRowBackground(
+                        Color(white: 0.12)
+                            .overlay(Color(white: 0.24).opacity(selected ? 1 : 0))
+                            .animation(.easeInOut(duration: 0.3), value: selected)
+                    )
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
                     .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
@@ -128,7 +131,6 @@ struct ContentView: View {
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black)
-        .animation(.easeInOut(duration: 0.25), value: player.currentTrack?.id)
         .animation(.easeInOut(duration: 0.2), value: searchText)
     }
 
