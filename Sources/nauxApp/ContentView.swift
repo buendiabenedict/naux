@@ -6,6 +6,7 @@ struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
     @State private var showImporter = false
     @State private var showFullPlayer = false
+    @State private var blurTrackID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
+                    .tint(.blue)
                     .disabled(player.folderName == nil)
 
                     Button {
@@ -38,6 +40,7 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: "folder")
                     }
+                    .tint(.blue)
                 }
             }
             .background(Color.black.ignoresSafeArea())
@@ -96,7 +99,17 @@ struct ContentView: View {
     private var trackList: some View {
         List {
             ForEach(player.tracks) { track in
-                Button { player.play(track) } label: {
+                Button {
+                    blurTrackID = track.id
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        player.play(track)
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            if blurTrackID == track.id { blurTrackID = nil }
+                        }
+                    }
+                } label: {
                     HStack(spacing: 12) {
                         ArtworkView(data: track.artworkData, size: 48)
                         Text(track.title)
@@ -110,8 +123,11 @@ struct ContentView: View {
                         }
                     }
                     .padding(.vertical, 4)
+                    .blur(radius: blurTrackID == track.id ? 6 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: blurTrackID)
                 }
                 .listRowBackground(Color.black)
+                .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
