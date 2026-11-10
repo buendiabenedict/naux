@@ -16,21 +16,77 @@ jobs:
         run: sudo xcode-select -switch /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
       - name: Show Xcode version
         run: xcodebuild -version
-      - name: Build unsigned app
+      - name: Build unsigned app and package IPA
         run: |
           set -euo pipefail
           SCHEME=$(xcodebuild -list -json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); s=(d.get('workspace') or {}).get('schemes') or (d.get('project') or {}).get('schemes') or []; print(next((x for x in s if x!='Package'), s[0] if s else 'nauxApp'))")
           echo "Using scheme: $SCHEME"
           xcodebuild -scheme "$SCHEME" -destination 'generic/platform=iOS' -configuration Release -derivedDataPath build CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
-          APP_PATH=$(find build -type d -name '*.app' | head -n 1)
-          if [ -z "$APP_PATH" ]; then
-            echo "No .app bundle produced" >&2
+
+          BIN_PATH=$(find build/Build/Products -type f -name "$SCHEME" -perm -111 | head -n 1 || true)
+          if [ -z "$BIN_PATH" ]; then
+            BIN_PATH=$(find build/Build/Products -type f -name 'nauxApp' -perm -111 | head -n 1 || true)
+          fi
+          if [ -z "$BIN_PATH" ]; then
+            echo "No executable produced" >&2
+            find build/Build/Products -maxdepth 3 -print || true
             exit 1
           fi
-          echo "Found app: $APP_PATH"
-          mkdir -p Payload
-          cp -R "$APP_PATH" Payload/
-          zip -qry naux-unsigned.ipa Payload
+          echo "Found executable: $BIN_PATH"
+
+          APP_NAME="naux"
+          APP_DIR="Payload/${APP_NAME}.app"
+          mkdir -p "$APP_DIR"
+
+          cp "$BIN_PATH" "$APP_DIR/$APP_NAME"
+          chmod +x "$APP_DIR/$APP_NAME"
+
+          cat > "$APP_DIR/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>naux</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.example.naux</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>naux</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSRequiresIPhoneOS</key>
+            <true/>
+            <key>MinimumOSVersion</key>
+            <string>17.0</string>
+            <key>UIDeviceFamily</key>
+            <array>
+              <integer>1</integer>
+              <integer>2</integer>
+            </array>
+            <key>UILaunchScreen</key>
+            <dict/>
+            <key>UISupportedInterfaceOrientations</key>
+            <array>
+              <string>UIInterfaceOrientationPortrait</string>
+              <string>UIInterfaceOrientationLandscapeLeft</string>
+              <string>UIInterfaceOrientationLandscapeRight</string>
+            </array>
+          </dict>
+          </plist>
+          PLIST
+
+          echo "APPL????" > "$APP_DIR/PkgInfo"
+          rm -f naux-unsigned.ipa
+          (cd "$(pwd)" && zip -qry naux-unsigned.ipa Payload)
+          unzip -l naux-unsigned.ipa | head -n 20
       - name: Upload unsigned IPA
         uses: actions/upload-artifact@v4
         with:
