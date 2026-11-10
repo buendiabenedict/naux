@@ -118,15 +118,15 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
                             Spacer()
-                            if player.currentTrack?.id == track.id {
-                                PlayingIndicator(isPlaying: player.isPlaying)
-                            }
                         }
                         .padding(.vertical, 4)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(Color(white: 0.12))
+                    .listRowBackground(player.currentTrack?.id == track.id ? Color.blue.opacity(0.35) : Color(white: 0.12))
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
+                    .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
                 }
             }
         }
@@ -191,38 +191,6 @@ private struct FullPlayerView: View {
             .clipped()
 
             Spacer()
-
-            VStack(spacing: 6) {
-                Slider(
-                    value: Binding(
-                        get: { isSeeking ? seekValue : player.progress },
-                        set: { seekValue = $0 }
-                    ),
-                    in: 0...max(player.duration, 1),
-                    onEditingChanged: { editing in
-                        if editing {
-                            isSeeking = true
-                            seekValue = player.progress
-                            player.isScrubbing = true
-                        } else {
-                            player.seek(to: seekValue)
-                            isSeeking = false
-                            player.isScrubbing = false
-                        }
-                    }
-                )
-                .tint(.white)
-
-                HStack {
-                    Text(format(isSeeking ? seekValue : player.progress))
-                    Spacer()
-                    Text(format(max(player.duration, 0)))
-                }
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
-                .monospacedDigit()
-            }
-            .padding(.horizontal, 24)
 
             HStack(spacing: 48) {
                 Button {
@@ -314,35 +282,5 @@ private struct ArtworkView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-    }
-}
-
-private struct PlayingIndicator: View {
-    let isPlaying: Bool
-    @State private var animate = false
-
-    var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            ForEach(0..<3, id: \.self) { i in
-                Capsule()
-                    .fill(Color.white.opacity(0.85))
-                    .frame(width: 3, height: isPlaying ? (animate ? CGFloat([10, 6, 14][i]) : CGFloat([4, 10, 6][i])) : 4)
-            }
-        }
-        .frame(width: 14, height: 14)
-        .onAppear { updateAnimation() }
-        .onChange(of: isPlaying) { _ in updateAnimation() }
-    }
-
-    private func updateAnimation() {
-        if isPlaying {
-            withAnimation(.easeInOut(duration: 0.45).repeatForever(autoreverses: true)) {
-                animate = true
-            }
-        } else {
-            withAnimation(.easeOut(duration: 0.2)) {
-                animate = false
-            }
-        }
     }
 }
