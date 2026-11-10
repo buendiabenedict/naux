@@ -118,7 +118,7 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(player.currentTrack?.id == track.id ? Color.white.opacity(0.12) : Color(white: 0.12))
+                    .listRowBackground(player.currentTrack?.id == track.id ? Color(white: 0.18) : Color(white: 0.12))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
                     .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
@@ -135,17 +135,11 @@ struct ContentView: View {
     private var playerBar: some View {
         HStack(spacing: 12) {
             ArtworkView(data: player.currentTrack?.artworkData, size: 44)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(player.currentTrack?.title ?? "")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(player.folderName ?? "")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.5))
-                    .lineLimit(1)
-            }
+            Text(player.currentTrack?.title ?? "")
+                .font(.subheadline)
+                .fontWeight(.medium)
+                .foregroundStyle(.white)
+                .lineLimit(1)
             Spacer()
             Button(action: { player.togglePlay() }) {
                 Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
