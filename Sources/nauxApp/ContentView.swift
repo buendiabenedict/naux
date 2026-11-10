@@ -135,24 +135,45 @@ struct ContentView: View {
     }
 
     private var playerBar: some View {
-        HStack(spacing: 12) {
-            ArtworkView(data: player.currentTrack?.artworkData, size: 44)
-            Text(player.currentTrack?.title ?? "")
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .foregroundStyle(.white)
-                .lineLimit(1)
-            Spacer()
-            Button(action: { player.togglePlay() }) {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title2)
+        VStack(spacing: 6) {
+            HStack(spacing: 12) {
+                ArtworkView(data: player.currentTrack?.artworkData, size: 44)
+                Text(player.currentTrack?.title ?? "")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                     .foregroundStyle(.white)
-                    .frame(width: 44, height: 44)
+                    .lineLimit(1)
+                Spacer()
+                Button(action: { player.togglePlay() }) {
+                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
+
+            GeometryReader { geo in
+                let total = max(player.duration, 1)
+                let fraction = min(max(player.progress / total, 0), 1)
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(height: 3)
+                    Capsule()
+                        .fill(Color.white.opacity(0.8))
+                        .frame(width: geo.size.width * fraction, height: 3)
+                    Circle()
+                        .fill(.white)
+                        .frame(width: 7, height: 7)
+                        .offset(x: max(0, geo.size.width * fraction - 3.5))
+                }
+            }
+            .frame(height: 8)
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
         .background(Color(white: 0.12))
         .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
     }
