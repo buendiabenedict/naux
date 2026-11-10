@@ -97,11 +97,10 @@ final class PlayerViewModel: ObservableObject {
 
     private static func extractArtwork(from url: URL) -> Data? {
         let asset = AVURLAsset(url: url)
-        let keys = [AVMetadataKey.commonKeyArtwork]
-        let items = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: .commonKeyArtwork, keySpace: .common)
+        let items = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: AVMetadataKey.commonKeyArtwork, keySpace: .common)
         if let data = items.first?.dataValue { return data }
         for item in asset.metadata {
-            if item.commonKey == .commonKeyArtwork, let data = item.dataValue { return data }
+            if item.commonKey == AVMetadataKey.commonKeyArtwork, let data = item.dataValue { return data }
         }
         return nil
     }
