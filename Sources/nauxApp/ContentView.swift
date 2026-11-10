@@ -127,7 +127,6 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                     .listRowBackground(Color(white: 0.12))
-                    .listRowSeparator(.hidden)
                 }
             }
         }
@@ -204,9 +203,11 @@ private struct FullPlayerView: View {
                         if editing {
                             isSeeking = true
                             seekValue = player.progress
+                            player.isScrubbing = true
                         } else {
                             player.seek(to: seekValue)
                             isSeeking = false
+                            player.isScrubbing = false
                         }
                     }
                 )

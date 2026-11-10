@@ -27,6 +27,7 @@ final class PlayerViewModel: ObservableObject {
     }
     @Published var folderName: String?
     @Published var errorMessage: String?
+    var isScrubbing = false
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -158,13 +159,14 @@ final class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let target = max(0, min(time, duration > 0 ? duration : time))
         let cm = CMTime(seconds: target, preferredTimescale: 600)
+        progress = target
         player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
-                self?.progress = target
-                self?.updateNowPlayingInfo()
+                guard let self else { return }
+                if !self.isScrubbing { self.progress = target }
+                self.updateNowPlayingInfo()
             }
         }
-        progress = target
     }
 
     private func startPlayback(_ track: Track) {
@@ -186,13 +188,15 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func addObservers(for item: AVPlayerItem) {
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
             Task { @MainActor in
-                self.progress = time.seconds.isFinite ? time.seconds : 0
                 let dur = item.duration.seconds
                 if dur.isFinite && dur > 0 { self.duration = dur }
+                if !self.isScrubbing {
+                    self.progress = time.seconds.isFinite ? time.seconds : 0
+                }
                 self.updateNowPlayingPlaybackTime()
             }
         }
