@@ -11,9 +11,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Select latest Xcode
-        run: sudo xcode-select -switch /Applications/Xcode_16.app/Contents/Developer
+      - name: Select Xcode
+        run: sudo xcode-select -switch /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -switch /Applications/Xcode.app/Contents/Developer
       - name: Show Xcode version
         run: xcodebuild -version
       - name: Build
-        run: xcodebuild -scheme naux -configuration Debug -sdk iphonesimulator build
+        run: xcodebuild -scheme naux-Package -destination 'generic/platform=iOS Simulator' -configuration Debug build
