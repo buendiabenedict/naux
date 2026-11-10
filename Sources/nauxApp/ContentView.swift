@@ -5,7 +5,6 @@ import UIKit
 struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
     @State private var showImporter = false
-    @State private var showFullPlayer = false
     @State private var searchText = ""
 
     private var filteredTracks: [Track] {
@@ -26,7 +25,6 @@ struct ContentView: View {
             .safeAreaInset(edge: .bottom) {
                 if player.currentTrack != nil {
                     playerBar
-                        .onTapGesture { showFullPlayer = true }
                 }
             }
             .navigationTitle("naux")
@@ -66,9 +64,6 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .tint(.white)
-        .fullScreenCover(isPresented: $showFullPlayer) {
-            FullPlayerView(player: player)
-        }
         .onDisappear { player.cleanup() }
     }
 
@@ -123,7 +118,7 @@ struct ContentView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(player.currentTrack?.id == track.id ? Color.blue.opacity(0.35) : Color(white: 0.12))
+                    .listRowBackground(player.currentTrack?.id == track.id ? Color.blue.opacity(0.18) : Color(white: 0.12))
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                     .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
                     .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
@@ -166,90 +161,6 @@ struct ContentView: View {
         .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
     }
 
-}
-
-private struct FullPlayerView: View {
-    @ObservedObject var player: PlayerViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var isSeeking = false
-    @State private var seekValue: Double = 0
-    @State private var transitionForward = true
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer().frame(height: 28)
-
-            ZStack {
-                trackDisplay
-                    .id(player.currentTrack?.id)
-                    .transition(.asymmetric(
-                        insertion: .move(edge: transitionForward ? .trailing : .leading).combined(with: .opacity),
-                        removal: .move(edge: transitionForward ? .leading : .trailing).combined(with: .opacity).combined(with: .scale(scale: 0.96))
-                    ))
-            }
-            .animation(.easeInOut(duration: 0.3), value: player.currentTrack?.id)
-            .clipped()
-
-            Spacer().frame(height: 20)
-
-            HStack(spacing: 48) {
-                Button {
-                    transitionForward = false
-                    withAnimation(.easeInOut(duration: 0.3)) { player.previous() }
-                } label: {
-                    Image(systemName: "backward.fill")
-                        .font(.title2)
-                }
-                Button(action: player.togglePlay) {
-                    Image(systemName: player.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                        .font(.system(size: 64))
-                }
-                Button {
-                    transitionForward = true
-                    withAnimation(.easeInOut(duration: 0.3)) { player.next() }
-                } label: {
-                    Image(systemName: "forward.fill")
-                        .font(.title2)
-                }
-            }
-            .foregroundStyle(.white)
-            .buttonStyle(.plain)
-
-            Spacer()
-        }
-        .padding(.bottom, 24)
-        .background(Color.black.ignoresSafeArea())
-        .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    if value.translation.height > 90 && abs(value.translation.width) < 120 {
-                        dismiss()
-                    }
-                }
-        )
-    }
-
-    private var trackDisplay: some View {
-        VStack(spacing: 10) {
-            ArtworkView(data: player.currentTrack?.artworkData, size: min(UIScreen.main.bounds.width - 64, 320), cornerRadius: 16)
-                .shadow(color: .black.opacity(0.4), radius: 20)
-
-            Text(player.currentTrack?.title ?? "")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .padding(.horizontal, 24)
-        }
-    }
-
-    private func format(_ seconds: Double) -> String {
-        guard seconds.isFinite && seconds >= 0 else { return "0:00" }
-        let s = Int(seconds)
-        return String(format: "%d:%02d", s / 60, s % 60)
-    }
 }
 
 private struct ArtworkView: View {
