@@ -207,41 +207,15 @@ struct ContentView: View {
 }
 
 private struct RoutePickerButton: UIViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
-        container.backgroundColor = .clear
-
-        let picker = AVRoutePickerView(frame: container.bounds)
-        picker.tintColor = .systemBlue
-        picker.activeTintColor = .systemBlue
-        picker.prioritizesVideoDevices = false
-        picker.alpha = 0.02
-        picker.isUserInteractionEnabled = false
-        container.addSubview(picker)
-        context.coordinator.picker = picker
-
-        let button = UIButton(type: .system)
-        button.frame = container.bounds
-        button.setImage(UIImage(systemName: "airplay.audio"), for: .normal)
-        button.tintColor = .systemBlue
-        button.addTarget(context.coordinator, action: #selector(Coordinator.presentPicker), for: .touchUpInside)
-        container.addSubview(button)
-
-        return container
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let view = AVRoutePickerView()
+        view.tintColor = .systemBlue
+        view.activeTintColor = .systemBlue
+        view.prioritizesVideoDevices = false
+        return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    final class Coordinator: NSObject {
-        weak var picker: AVRoutePickerView?
-
-        @objc func presentPicker() {
-            guard let button = picker?.subviews.compactMap({ $0 as? UIButton }).first else { return }
-            button.sendActions(for: .touchUpInside)
-        }
-    }
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 private struct ArtworkView: View {
