@@ -283,14 +283,18 @@ final class PlayerViewModel: ObservableObject {
         startPlayback(tracks[prevIndex])
     }
 
-    func seek(to time: Double) {
-        guard let player else { return }
+    func seek(to time: Double, endScrubbing: Bool = false) {
+        guard let player else {
+            if endScrubbing { isScrubbing = false }
+            return
+        }
         let target = max(0, min(time, duration > 0 ? duration : time))
         let cm = CMTime(seconds: target, preferredTimescale: 600)
         progress = target
         player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
+                if endScrubbing { self.isScrubbing = false }
                 if !self.isScrubbing { self.progress = target }
                 self.updateNowPlayingInfo()
             }

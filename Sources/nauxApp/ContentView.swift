@@ -174,16 +174,20 @@ struct ContentView: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
+                            guard player.duration > 0 else { return }
                             player.isScrubbing = true
                             let x = min(max(value.location.x, 0), geo.size.width)
                             player.progress = (x / geo.size.width) * total
                         }
                         .onEnded { value in
+                            guard player.duration > 0 else {
+                                player.isScrubbing = false
+                                return
+                            }
                             let x = min(max(value.location.x, 0), geo.size.width)
                             let time = (x / geo.size.width) * total
                             player.progress = time
-                            player.isScrubbing = false
-                            player.seek(to: time)
+                            player.seek(to: time, endScrubbing: true)
                         }
                 )
             }
