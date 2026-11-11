@@ -7,6 +7,8 @@ struct ContentView: View {
     @State private var showImporter = false
     @State private var searchText = ""
     @State private var displayedTracks: [Track] = []
+    @State private var showInlineSearch = true
+    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -23,10 +25,22 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("naux")
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search music")
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    if !showInlineSearch || !searchText.isEmpty {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showInlineSearch = true
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                searchFocused = true
+                            }
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                        }
+                        .tint(.blue)
+                    }
                     Button {
                         showImporter = true
                     } label: {
@@ -98,25 +112,81 @@ struct ContentView: View {
     }
 
     private var trackList: some View {
-        List {
-            Section {
-                ForEach(displayedTracks) { track in
-                    TrackRowView(
-                        track: track,
-                        selected: player.currentTrack?.id == track.id,
-                        player: player
-                    )
-                    .listRowBackground(
-                        Color(white: 0.12)
-                            .overlay(Color(white: 0.24).opacity(player.currentTrack?.id == track.id ? 1 : 0))
-                    )
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+        ScrollViewReader { proxy in
+            List {
+                Section {
+                    if showInlineSearch || !searchText.isEmpty {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass")
+                                .foregroundStyle(.white.opacity(0.5))
+                            TextField("Search music", text: $searchText)
+                                .focused($searchFocused)
+                                .foregroundStyle(.white)
+                                .tint(.blue)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                            if !searchText.isEmpty {
+                                Button {
+                                    searchText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.white.opacity(0.5))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(Color(white: 0.18), in: RoundedRectangle(cornerRadius: 10))
+                        .listRowBackground(Color.black)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .id("search-bar")
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(
+                                    key: SearchBarVisiblePreferenceKey.self,
+                                    value: geo.frame(in: .named("track-list")).maxY > 0
+                                )
+                            }
+                        )
+                    }
+
+                    ForEach(displayedTracks) { track in
+                        TrackRowView(
+                            track: track,
+                            selected: player.currentTrack?.id == track.id,
+                            player: player
+                        )
+                        .listRowBackground(
+                            Color(white: 0.12)
+                                .overlay(Color(white: 0.24).opacity(player.currentTrack?.id == track.id ? 1 : 0))
+                        )
+                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(Color.black)
+            .coordinateSpace(name: "track-list")
+            .onPreferenceChange(SearchBarVisiblePreferenceKey.self) { visible in
+                if !searchFocused {
+                    showInlineSearch = visible || !searchText.isEmpty
+                }
+            }
+            .onChange(of: searchFocused) { focused in
+                if focused {
+                    withAnimation { proxy.scrollTo("search-bar", anchor: .top) }
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(Color.black)
+    }
+}
+
+private struct SearchBarVisiblePreferenceKey: PreferenceKey {
+    static var defaultValue: Bool = true
+    static func reduce(value: inout Bool, nextValue: () -> Bool) {
+        value = nextValue()
     }
 }
 
