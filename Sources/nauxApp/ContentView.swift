@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
 
@@ -6,12 +6,7 @@ struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
     @State private var showImporter = false
     @State private var searchText = ""
-
-    private var filteredTracks: [Track] {
-        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return player.tracks }
-        return player.tracks.filter { $0.title.localizedCaseInsensitiveContains(q) }
-    }
+    @State private var displayedTracks: [Track] = []
 
     var body: some View {
         NavigationStack {
@@ -24,7 +19,7 @@ struct ContentView: View {
             }
             .safeAreaInset(edge: .bottom) {
                 if player.currentTrack != nil {
-                    playerBar
+                    PlayerBarView(player: player, playback: player.playback)
                 }
             }
             .navigationTitle("naux")
@@ -32,14 +27,6 @@ struct ContentView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        player.reload()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .tint(.blue)
-                    .disabled(player.folderName == nil)
-
                     Button {
                         showImporter = true
                     } label: {
@@ -61,10 +48,22 @@ struct ContentView: View {
                     player.errorMessage = error.localizedDescription
                 }
             }
+            .onAppear { updateDisplayedTracks() }
+            .onChange(of: searchText) { _ in updateDisplayedTracks() }
+            .onChange(of: player.tracks) { _ in updateDisplayedTracks() }
         }
         .preferredColorScheme(.dark)
         .tint(.white)
         .onDisappear { player.cleanup() }
+    }
+
+    private func updateDisplayedTracks() {
+        let q = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if q.isEmpty {
+            displayedTracks = player.tracks
+        } else {
+            displayedTracks = player.tracks.filter { $0.title.localizedCaseInsensitiveContains(q) }
+        }
     }
 
     private var emptyState: some View {
@@ -101,44 +100,61 @@ struct ContentView: View {
     private var trackList: some View {
         List {
             Section {
-                ForEach(filteredTracks) { track in
-                    let selected = player.currentTrack?.id == track.id
-                    Button {
-                        player.play(track)
-                    } label: {
-                        HStack(spacing: 12) {
-                            ArtworkView(data: player.artwork(for: track), size: 48)
-                                .onAppear { player.loadArtworkIfNeeded(for: track) }
-                            Text(track.title)
-                                .foregroundStyle(.white)
-                                .lineLimit(1)
-                            Spacer()
-                        }
-                        .padding(.vertical, 4)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                ForEach(displayedTracks) { track in
+                    TrackRowView(
+                        track: track,
+                        selected: player.currentTrack?.id == track.id,
+                        player: player
+                    )
                     .listRowBackground(
                         Color(white: 0.12)
-                            .overlay(Color(white: 0.24).opacity(selected ? 1 : 0))
-                            .animation(.easeInOut(duration: 0.3), value: selected)
+                            .overlay(Color(white: 0.24).opacity(player.currentTrack?.id == track.id ? 1 : 0))
                     )
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] }
-                    .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] }
                 }
             }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
         .background(Color.black)
-        .animation(.easeInOut(duration: 0.2), value: searchText)
     }
+}
 
-    private var playerBar: some View {
+private struct TrackRowView: View {
+    let track: Track
+    let selected: Bool
+    @ObservedObject var player: PlayerViewModel
+
+    var body: some View {
+        Button {
+            player.play(track)
+        } label: {
+            HStack(spacing: 12) {
+                ArtworkView(track: track, player: player, size: 48)
+                Text(track.title)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct PlayerBarView: View {
+    @ObservedObject var player: PlayerViewModel
+    @ObservedObject var playback: PlaybackProgress
+
+    var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 12) {
-                ArtworkView(data: player.currentTrack.flatMap { player.artwork(for: $0) }, size: 44)
+                if let track = player.currentTrack {
+                    ArtworkView(track: track, player: player, size: 44)
+                } else {
+                    ArtworkView(track: nil, player: player, size: 44)
+                }
                 Text(player.currentTrack?.title ?? "")
                     .font(.subheadline)
                     .fontWeight(.medium)
@@ -155,8 +171,8 @@ struct ContentView: View {
             }
 
             GeometryReader { geo in
-                let total = max(player.duration, 0.001)
-                let fraction = min(max(player.progress / total, 0), 1)
+                let total = max(playback.duration, 0.001)
+                let fraction = min(max(playback.progress / total, 0), 1)
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(Color.white.opacity(0.15))
@@ -174,19 +190,19 @@ struct ContentView: View {
                 .gesture(
                     DragGesture(minimumDistance: 0)
                         .onChanged { value in
-                            guard player.duration > 0 else { return }
-                            player.isScrubbing = true
+                            guard playback.duration > 0 else { return }
+                            playback.isScrubbing = true
                             let x = min(max(value.location.x, 0), geo.size.width)
-                            player.progress = (x / geo.size.width) * total
+                            playback.progress = (x / geo.size.width) * total
                         }
                         .onEnded { value in
-                            guard player.duration > 0 else {
-                                player.isScrubbing = false
+                            guard playback.duration > 0 else {
+                                playback.isScrubbing = false
                                 return
                             }
                             let x = min(max(value.location.x, 0), geo.size.width)
                             let time = (x / geo.size.width) * total
-                            player.progress = time
+                            playback.progress = time
                             player.seek(to: time, endScrubbing: true)
                         }
                 )
@@ -199,18 +215,19 @@ struct ContentView: View {
         .background(Color(white: 0.12))
         .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
     }
-
 }
 
 private struct ArtworkView: View {
-    let data: Data?
+    let track: Track?
+    @ObservedObject var player: PlayerViewModel
     let size: CGFloat
     var cornerRadius: CGFloat = 8
+    @State private var image: UIImage?
 
     var body: some View {
         Group {
-            if let data, let uiImage = UIImage(data: data) {
-                Image(uiImage: uiImage)
+            if let image {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -224,5 +241,26 @@ private struct ArtworkView: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .task(id: track?.id) {
+            await loadImage()
+        }
+    }
+
+    private func loadImage() async {
+        guard let track else {
+            image = nil
+            return
+        }
+        if let data = player.cachedArtworkData(for: track.id) {
+            image = UIImage(data: data)
+            return
+        }
+        let data = await player.loadArtwork(for: track)
+        guard !Task.isCancelled else { return }
+        if let data {
+            image = UIImage(data: data)
+        } else {
+            image = nil
+        }
     }
 }

@@ -15,19 +15,37 @@ struct Track: Identifiable, Equatable {
 }
 
 @MainActor
+final class PlaybackProgress: ObservableObject {
+    @Published var progress: Double = 0
+    @Published var duration: Double = 0
+    var isScrubbing = false
+}
+
+@MainActor
 final class PlayerViewModel: ObservableObject {
     @Published var tracks: [Track] = []
     @Published var currentTrack: Track?
     @Published var isPlaying = false
-    @Published var progress: Double = 0
-    @Published var duration: Double = 0
     @Published var volume: Double = 0.7 {
         didSet { player?.volume = Float(volume) }
     }
     @Published var folderName: String?
     @Published var errorMessage: String?
-    @Published var artworks: [String: Data] = [:]
-    var isScrubbing = false
+
+    let playback = PlaybackProgress()
+
+    var progress: Double {
+        get { playback.progress }
+        set { playback.progress = newValue }
+    }
+    var duration: Double {
+        get { playback.duration }
+        set { playback.duration = newValue }
+    }
+    var isScrubbing: Bool {
+        get { playback.isScrubbing }
+        set { playback.isScrubbing = newValue }
+    }
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -37,6 +55,7 @@ final class PlayerViewModel: ObservableObject {
     private var remoteCommandsConfigured = false
     private var scanTask: Task<Void, Never>?
     private var artworkTasks: [String: Task<Void, Never>] = [:]
+    private var artworkCache: [String: Data] = [:]
     private let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "flac", "aiff", "caf", "m4b", "alac"]
     private let bookmarkKey = "savedFolderBookmark"
     private let cacheKey = "savedFolderTrackCache"
@@ -195,30 +214,46 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    func cachedArtworkData(for id: String) -> Data? {
+        artworkCache[id]
+    }
+
+    func loadArtwork(for track: Track) async -> Data? {
+        if let data = artworkCache[track.id] { return data }
+        if let task = artworkTasks[track.id] {
+            _ = await task.value
+            return artworkCache[track.id]
+        }
+        let id = track.id
+        let url = track.url
+        let task = Task<Data?, Never>(priority: .utility) {
+            await Task.detached(priority: .utility) {
+                Self.extractArtwork(from: url)
+            }.value
+        }
+        artworkTasks[id] = Task { _ = await task.value }
+        let data = await task.value
+        artworkTasks[id] = nil
+        if let data {
+            artworkCache[id] = data
+            if currentTrack?.id == id {
+                updateNowPlayingInfo()
+            }
+        }
+        return data
+    }
+
     func artwork(for track: Track) -> Data? {
-        if let data = artworks[track.id] { return data }
-        loadArtworkIfNeeded(for: track)
-        return nil
+        cachedArtworkData(for: track.id)
     }
 
     func loadArtworkIfNeeded(for track: Track) {
-        guard artworks[track.id] == nil, artworkTasks[track.id] == nil else { return }
-        let id = track.id
-        let url = track.url
-        artworkTasks[id] = Task(priority: .utility) {
-            let data = await Task.detached(priority: .utility) {
-                Self.extractArtwork(from: url)
-            }.value
-            guard !Task.isCancelled else { return }
-            self.artworkTasks[id] = nil
-            if let data {
-                self.artworks[id] = data
-            }
-        }
+        guard artworkCache[track.id] == nil, artworkTasks[track.id] == nil else { return }
+        Task { _ = await loadArtwork(for: track) }
     }
 
     private func pruneArtworkCache(validIDs: Set<String>) {
-        artworks = artworks.filter { validIDs.contains($0.key) }
+        artworkCache = artworkCache.filter { validIDs.contains($0.key) }
         for (id, task) in artworkTasks where !validIDs.contains(id) {
             task.cancel()
             artworkTasks[id] = nil
@@ -273,7 +308,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func previous() {
-        if progress > 3 {
+        if playback.progress > 3 {
             seek(to: 0)
             return
         }
@@ -285,17 +320,17 @@ final class PlayerViewModel: ObservableObject {
 
     func seek(to time: Double, endScrubbing: Bool = false) {
         guard let player else {
-            if endScrubbing { isScrubbing = false }
+            if endScrubbing { playback.isScrubbing = false }
             return
         }
-        let target = max(0, min(time, duration > 0 ? duration : time))
+        let target = max(0, min(time, playback.duration > 0 ? playback.duration : time))
         let cm = CMTime(seconds: target, preferredTimescale: 600)
-        progress = target
+        playback.progress = target
         player.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             Task { @MainActor in
                 guard let self else { return }
-                if endScrubbing { self.isScrubbing = false }
-                if !self.isScrubbing { self.progress = target }
+                if endScrubbing { self.playback.isScrubbing = false }
+                if !self.playback.isScrubbing { self.playback.progress = target }
                 self.updateNowPlayingInfo()
             }
         }
@@ -311,23 +346,24 @@ final class PlayerViewModel: ObservableObject {
         }
         player?.volume = Float(volume)
         currentTrack = track
-        progress = 0
-        duration = 0
+        playback.progress = 0
+        playback.duration = 0
         isPlaying = true
         addObservers(for: item)
         player?.play()
         updateNowPlayingInfo()
+        loadArtworkIfNeeded(for: track)
     }
 
     private func addObservers(for item: AVPlayerItem) {
-        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
+        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player?.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             guard let self else { return }
             Task { @MainActor in
                 let dur = item.duration.seconds
-                if dur.isFinite && dur > 0 { self.duration = dur }
-                if !self.isScrubbing {
-                    self.progress = time.seconds.isFinite ? time.seconds : 0
+                if dur.isFinite && dur > 0 { self.playback.duration = dur }
+                if !self.playback.isScrubbing {
+                    self.playback.progress = time.seconds.isFinite ? time.seconds : 0
                 }
                 self.updateNowPlayingPlaybackTime()
             }
@@ -349,8 +385,8 @@ final class PlayerViewModel: ObservableObject {
         player?.pause()
         player?.replaceCurrentItem(with: nil)
         isPlaying = false
-        progress = 0
-        duration = 0
+        playback.progress = 0
+        playback.duration = 0
         if clearCurrent {
             currentTrack = nil
             MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
@@ -410,13 +446,13 @@ final class PlayerViewModel: ObservableObject {
         }
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: track.title,
-            MPNowPlayingInfoPropertyElapsedPlaybackTime: progress,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: playback.progress,
             MPNowPlayingInfoPropertyPlaybackRate: isPlaying ? 1.0 : 0.0
         ]
-        if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = duration
+        if playback.duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = playback.duration
         }
-        if let data = artworks[track.id], let image = UIImage(data: data) {
+        if let data = artworkCache[track.id], let image = UIImage(data: data) {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
         } else {
             loadArtworkIfNeeded(for: track)
@@ -426,10 +462,10 @@ final class PlayerViewModel: ObservableObject {
 
     private func updateNowPlayingPlaybackTime() {
         guard var info = MPNowPlayingInfoCenter.default().nowPlayingInfo else { return }
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = progress
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = playback.progress
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
-        if duration > 0 {
-            info[MPMediaItemPropertyPlaybackDuration] = duration
+        if playback.duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = playback.duration
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
