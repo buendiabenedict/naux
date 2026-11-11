@@ -107,7 +107,8 @@ struct ContentView: View {
                         player.play(track)
                     } label: {
                         HStack(spacing: 12) {
-                            ArtworkView(data: track.artworkData, size: 48)
+                            ArtworkView(data: player.artwork(for: track), size: 48)
+                                .onAppear { player.loadArtworkIfNeeded(for: track) }
                             Text(track.title)
                                 .foregroundStyle(.white)
                                 .lineLimit(1)
@@ -137,7 +138,7 @@ struct ContentView: View {
     private var playerBar: some View {
         VStack(spacing: 6) {
             HStack(spacing: 12) {
-                ArtworkView(data: player.currentTrack?.artworkData, size: 44)
+                ArtworkView(data: player.currentTrack.flatMap { player.artwork(for: $0) }, size: 44)
                 Text(player.currentTrack?.title ?? "")
                     .font(.subheadline)
                     .fontWeight(.medium)

@@ -1,14 +1,13 @@
-import Foundation
+﻿import Foundation
 import AVFoundation
 import UIKit
 import Combine
 import MediaPlayer
 
 struct Track: Identifiable, Equatable {
-    let id = UUID()
+    let id: String
     let url: URL
     let title: String
-    let artworkData: Data?
 
     static func == (lhs: Track, rhs: Track) -> Bool {
         lhs.id == rhs.id
@@ -27,6 +26,7 @@ final class PlayerViewModel: ObservableObject {
     }
     @Published var folderName: String?
     @Published var errorMessage: String?
+    @Published var artworks: [String: Data] = [:]
     var isScrubbing = false
 
     private var player: AVPlayer?
@@ -35,21 +35,30 @@ final class PlayerViewModel: ObservableObject {
     private var folderURL: URL?
     private var hasFolderAccess = false
     private var remoteCommandsConfigured = false
+    private var scanTask: Task<Void, Never>?
+    private var artworkTasks: [String: Task<Void, Never>] = [:]
+    private let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "flac", "aiff", "caf", "m4b", "alac"]
+    private let bookmarkKey = "savedFolderBookmark"
+    private let cacheKey = "savedFolderTrackCache"
+    private let cachedFolderPathKey = "savedFolderTrackCachePath"
 
     init() {
         configureRemoteCommands()
         restoreSavedFolder()
     }
 
-    private nonisolated func stopFolderAccess(url: URL?) {
+    private nonisolated func stopAccess(url: URL?) {
         guard let url else { return }
         url.stopAccessingSecurityScopedResource()
     }
 
     func cleanup() {
+        scanTask?.cancel()
+        scanTask = nil
+        cancelArtworkTasks()
         removeObservers()
         if hasFolderAccess {
-            stopFolderAccess(url: folderURL)
+            stopAccess(url: folderURL)
         }
         hasFolderAccess = false
         folderURL = nil
@@ -59,33 +68,34 @@ final class PlayerViewModel: ObservableObject {
 
     func loadFolder(_ url: URL) {
         errorMessage = nil
-        stopFolderAccess()
+        stopAccess(url: folderURL)
         folderURL = url
         hasFolderAccess = url.startAccessingSecurityScopedResource()
         folderName = url.lastPathComponent
         saveBookmark(for: url)
-        scanFolder(url)
+        loadCachedTracks(for: url)
+        scanFolder(url, showLoadingMessage: tracks.isEmpty)
+    }
+
+    func reload() {
+        guard let folderURL else { return }
+        errorMessage = nil
+        scanFolder(folderURL, showLoadingMessage: tracks.isEmpty)
     }
 
     private func restoreSavedFolder() {
-        guard let data = UserDefaults.standard.data(forKey: "savedFolderBookmark") else { return }
+        guard let data = UserDefaults.standard.data(forKey: bookmarkKey) else { return }
         do {
             var isStale = false
-            let url = try URL(
-                resolvingBookmarkData: data,
-                options: [.withoutUI, .withSecurityScope],
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            stopFolderAccess()
+            let url = try URL(resolvingBookmarkData: data, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+            stopAccess(url: folderURL)
             folderURL = url
             hasFolderAccess = url.startAccessingSecurityScopedResource()
             folderName = url.lastPathComponent
-            if isStale || !hasFolderAccess {
-                saveBookmark(for: url)
-            }
+            if isStale { saveBookmark(for: url) }
             if hasFolderAccess {
-                scanFolder(url)
+                loadCachedTracks(for: url)
+                scanFolder(url, showLoadingMessage: tracks.isEmpty)
             } else {
                 tracks = []
                 stopPlayback(clearCurrent: true)
@@ -103,55 +113,124 @@ final class PlayerViewModel: ObservableObject {
 
     private func saveBookmark(for url: URL) {
         do {
-            let data = try url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-            UserDefaults.standard.set(data, forKey: "savedFolderBookmark")
+            let data = try url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+            UserDefaults.standard.set(data, forKey: bookmarkKey)
         } catch {
             // Ignore bookmark save failures; folder still works for this session.
         }
     }
 
-    func reload() {
-        guard let folderURL else { return }
-        errorMessage = nil
-        scanFolder(folderURL)
-    }
-
-    private func scanFolder(_ url: URL) {
-        let audioExts: Set<String> = ["mp3", "m4a", "aac", "wav", "flac", "aiff", "caf", "m4b", "alac"]
-        do {
-            let files = try FileManager.default.contentsOfDirectory(
-                at: url,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            )
-            let audioFiles = files
-                .filter { audioExts.contains($0.pathExtension.lowercased()) }
-                .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
-
-            tracks = audioFiles.map { file in
-                Track(
-                    url: file,
-                    title: file.deletingPathExtension().lastPathComponent,
-                    artworkData: Self.extractArtwork(from: file)
-                )
-            }
-
-            if tracks.isEmpty {
-                errorMessage = "No audio files found in this folder."
-            }
-            stopPlayback(clearCurrent: true)
-        } catch {
-            tracks = []
-            stopPlayback(clearCurrent: true)
-            errorMessage = "Could not read folder: \(error.localizedDescription)"
+    private func loadCachedTracks(for folder: URL) {
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: cachedFolderPathKey) == folder.path,
+              let names = defaults.array(forKey: cacheKey) as? [String], !names.isEmpty else { return }
+        let cached = names.compactMap { name -> Track? in
+            let fileURL = folder.appendingPathComponent(name)
+            var isDir: ObjCBool = false
+            guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue else { return nil }
+            return Track(id: fileURL.path, url: fileURL, title: fileURL.deletingPathExtension().lastPathComponent)
+        }
+        if !cached.isEmpty {
+            tracks = cached
         }
     }
 
-    private static func extractArtwork(from url: URL) -> Data? {
+    private func saveTrackCache(for folder: URL, files: [URL]) {
+        let names = files.map { $0.lastPathComponent }
+        let defaults = UserDefaults.standard
+        defaults.set(names, forKey: cacheKey)
+        defaults.set(folder.path, forKey: cachedFolderPathKey)
+    }
+
+    private func scanFolder(_ url: URL, showLoadingMessage: Bool) {
+        scanTask?.cancel()
+        let folderPath = url.path
+        let exts = audioExts
+        scanTask = Task(priority: .userInitiated) {
+            let result: Result<[URL], Error> = await Task.detached(priority: .userInitiated) {
+                do {
+                    let files = try FileManager.default.contentsOfDirectory(
+                        at: url,
+                        includingPropertiesForKeys: [.isRegularFileKey],
+                        options: [.skipsHiddenFiles]
+                    )
+                    let audioFiles = files
+                        .filter { exts.contains($0.pathExtension.lowercased()) }
+                        .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+                    return .success(audioFiles)
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+            guard !Task.isCancelled else { return }
+            guard self.folderURL?.path == folderPath else { return }
+            switch result {
+            case .success(let files):
+                let newTracks = files.map { Track(id: $0.path, url: $0, title: $0.deletingPathExtension().lastPathComponent) }
+                self.saveTrackCache(for: url, files: files)
+                if self.tracks != newTracks {
+                    self.reconcileCurrentTrack(with: newTracks)
+                    self.tracks = newTracks
+                }
+                self.errorMessage = newTracks.isEmpty ? "No audio files found in this folder." : nil
+                if newTracks.isEmpty {
+                    self.stopPlayback(clearCurrent: true)
+                } else {
+                    self.pruneArtworkCache(validIDs: Set(newTracks.map(\.id)))
+                }
+            case .failure(let error):
+                if self.tracks.isEmpty {
+                    self.errorMessage = "Could not read folder: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func reconcileCurrentTrack(with newTracks: [Track]) {
+        guard let current = currentTrack else { return }
+        if let match = newTracks.first(where: { $0.id == current.id }) {
+            currentTrack = match
+        } else {
+            stopPlayback(clearCurrent: true)
+        }
+    }
+
+    func artwork(for track: Track) -> Data? {
+        if let data = artworks[track.id] { return data }
+        loadArtworkIfNeeded(for: track)
+        return nil
+    }
+
+    func loadArtworkIfNeeded(for track: Track) {
+        guard artworks[track.id] == nil, artworkTasks[track.id] == nil else { return }
+        let id = track.id
+        let url = track.url
+        artworkTasks[id] = Task(priority: .utility) {
+            let data = await Task.detached(priority: .utility) {
+                Self.extractArtwork(from: url)
+            }.value
+            guard !Task.isCancelled else { return }
+            self.artworkTasks[id] = nil
+            if let data {
+                self.artworks[id] = data
+            }
+        }
+    }
+
+    private func pruneArtworkCache(validIDs: Set<String>) {
+        artworks = artworks.filter { validIDs.contains($0.key) }
+        for (id, task) in artworkTasks where !validIDs.contains(id) {
+            task.cancel()
+            artworkTasks[id] = nil
+        }
+    }
+
+    private func cancelArtworkTasks() {
+        for task in artworkTasks.values { task.cancel() }
+        artworkTasks.removeAll()
+    }
+
+    private static nonisolated func extractArtwork(from url: URL) -> Data? {
         let asset = AVURLAsset(url: url)
         let items = AVMetadataItem.metadataItems(from: asset.commonMetadata, withKey: AVMetadataKey.commonKeyArtwork, keySpace: .common)
         if let data = items.first?.dataValue { return data }
@@ -162,7 +241,7 @@ final class PlayerViewModel: ObservableObject {
     }
 
     func play(_ track: Track) {
-        guard tracks.contains(track) else { return }
+        guard tracks.contains(where: { $0.id == track.id }) else { return }
         if currentTrack?.id == track.id {
             togglePlay()
             return
@@ -188,7 +267,7 @@ final class PlayerViewModel: ObservableObject {
 
     func next() {
         guard !tracks.isEmpty, let current = currentTrack,
-              let idx = tracks.firstIndex(of: current) else { return }
+              let idx = tracks.firstIndex(where: { $0.id == current.id }) else { return }
         let nextIndex = (idx + 1) % tracks.count
         startPlayback(tracks[nextIndex])
     }
@@ -199,7 +278,7 @@ final class PlayerViewModel: ObservableObject {
             return
         }
         guard !tracks.isEmpty, let current = currentTrack,
-              let idx = tracks.firstIndex(of: current) else { return }
+              let idx = tracks.firstIndex(where: { $0.id == current.id }) else { return }
         let prevIndex = (idx - 1 + tracks.count) % tracks.count
         startPlayback(tracks[prevIndex])
     }
@@ -333,8 +412,10 @@ final class PlayerViewModel: ObservableObject {
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
-        if let data = track.artworkData, let image = UIImage(data: data) {
+        if let data = artworks[track.id], let image = UIImage(data: data) {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: image.size) { _ in image }
+        } else {
+            loadArtworkIfNeeded(for: track)
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
@@ -358,13 +439,5 @@ final class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(endObserver)
         }
         endObserver = nil
-    }
-
-    private func stopFolderAccess() {
-        if hasFolderAccess {
-            stopFolderAccess(url: folderURL)
-        }
-        hasFolderAccess = false
-        folderURL = nil
     }
 }
