@@ -155,7 +155,7 @@ struct ContentView: View {
             }
 
             GeometryReader { geo in
-                let total = max(player.duration, 1)
+                let total = max(player.duration, 0.001)
                 let fraction = min(max(player.progress / total, 0), 1)
                 ZStack(alignment: .leading) {
                     Capsule()
@@ -166,11 +166,28 @@ struct ContentView: View {
                         .frame(width: geo.size.width * fraction, height: 3)
                     Circle()
                         .fill(.white)
-                        .frame(width: 7, height: 7)
-                        .offset(x: max(0, geo.size.width * fraction - 3.5))
+                        .frame(width: 10, height: 10)
+                        .offset(x: max(0, geo.size.width * fraction - 5))
                 }
+                .frame(maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            player.isScrubbing = true
+                            let x = min(max(value.location.x, 0), geo.size.width)
+                            player.progress = (x / geo.size.width) * total
+                        }
+                        .onEnded { value in
+                            let x = min(max(value.location.x, 0), geo.size.width)
+                            let time = (x / geo.size.width) * total
+                            player.progress = time
+                            player.isScrubbing = false
+                            player.seek(to: time)
+                        }
+                )
             }
-            .frame(height: 8)
+            .frame(height: 20)
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
