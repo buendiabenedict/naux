@@ -1,6 +1,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
+import AVKit
 
 struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
@@ -32,6 +33,9 @@ struct ContentView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
+                    RoutePickerButton()
+                        .frame(width: 30, height: 30)
+
                     Button {
                         player.reload()
                     } label: {
@@ -200,6 +204,18 @@ struct ContentView: View {
         .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
     }
 
+}
+
+private struct RoutePickerButton: UIViewRepresentable {
+    func makeUIView(context: Context) -> AVRoutePickerView {
+        let view = AVRoutePickerView()
+        view.tintColor = .systemBlue
+        view.activeTintColor = .systemBlue
+        view.prioritizesVideoDevices = false
+        return view
+    }
+
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
 }
 
 private struct ArtworkView: View {
