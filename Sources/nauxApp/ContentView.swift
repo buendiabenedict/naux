@@ -30,15 +30,15 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
-                        searchRequest += 1
+                        searchFocused = true
                     } label: {
                         Image(systemName: "magnifyingglass")
                     }
                     .tint(.blue)
-                    .opacity(isSearchBarVisible && searchText.isEmpty ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: isSearchBarVisible)
+                    .opacity(showSearchIcon ? 1 : 0)
+                    .animation(.easeInOut(duration: 0.2), value: showSearchIcon)
                     .animation(.easeInOut(duration: 0.2), value: searchText.isEmpty)
-                    .allowsHitTesting(!(isSearchBarVisible && searchText.isEmpty))
+                    .allowsHitTesting(showSearchIcon)
 
                     Button {
                         showImporter = true
@@ -111,7 +111,7 @@ struct ContentView: View {
     }
 
     private var trackList: some View {
-        ScrollViewReader { proxy in
+        GeometryReader { geo in
             List {
                 Section {
                     HStack(spacing: 8) {
@@ -140,10 +140,10 @@ struct ContentView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     .id("search-bar")
                     .background(
-                        GeometryReader { geo in
+                        GeometryReader { searchGeo in
                             Color.clear.preference(
                                 key: SearchBarVisiblePreferenceKey.self,
-                                value: geo.frame(in: .named("track-list")).maxY > 0
+                                value: searchGeo.frame(in: .named("track-list")).maxY > 0
                             )
                         }
                     )
@@ -167,16 +167,10 @@ struct ContentView: View {
             .background(Color.black)
             .coordinateSpace(name: "track-list")
             .onPreferenceChange(SearchBarVisiblePreferenceKey.self) { visible in
-                isSearchBarVisible = visible
+                lastScrollY = visible ? geo.size.height : -geo.size.height
+                showSearchIcon = lastScrollY < 0
             }
-            .onChange(of: searchRequest) { _ in
-                withAnimation {
-                    proxy.scrollTo("search-bar", anchor: .top)
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                    searchFocused = true
-                }
-            }
+            .onAppear { lastScrollY = 0 }
         }
     }
 }
