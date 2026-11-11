@@ -1,7 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import UIKit
-import AVKit
 
 struct ContentView: View {
     @StateObject private var player = PlayerViewModel()
@@ -33,9 +32,6 @@ struct ContentView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    RoutePickerButton()
-                        .frame(width: 30, height: 30)
-
                     Button {
                         player.reload()
                     } label: {
@@ -204,44 +200,6 @@ struct ContentView: View {
         .overlay(alignment: .top) { Divider().background(Color.white.opacity(0.1)) }
     }
 
-}
-
-private struct RoutePickerButton: UIViewRepresentable {
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView(frame: CGRect(x: 0, y: 0, width: 30, height: 30))
-        container.backgroundColor = .clear
-
-        let picker = AVRoutePickerView(frame: container.bounds)
-        picker.prioritizesVideoDevices = false
-        picker.alpha = 0.02
-        picker.isUserInteractionEnabled = false
-        container.addSubview(picker)
-        context.coordinator.picker = picker
-
-        let button = UIButton(type: .system)
-        button.frame = container.bounds
-        button.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        button.setImage(UIImage(systemName: "dot.radiowaves.right"), for: .normal)
-        button.tintColor = .systemBlue
-        button.accessibilityLabel = "Audio Output"
-        button.addTarget(context.coordinator, action: #selector(Coordinator.presentPicker), for: .touchUpInside)
-        container.addSubview(button)
-
-        return container
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    final class Coordinator: NSObject {
-        weak var picker: AVRoutePickerView?
-
-        @objc func presentPicker() {
-            guard let button = picker?.subviews.compactMap({ $0 as? UIButton }).first else { return }
-            button.sendActions(for: .touchUpInside)
-        }
-    }
 }
 
 private struct ArtworkView: View {
