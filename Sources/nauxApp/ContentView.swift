@@ -7,8 +7,8 @@ struct ContentView: View {
     @State private var showImporter = false
     @State private var searchText = ""
     @State private var displayedTracks: [Track] = []
-    @State private var isSearchBarVisible = true
-    @State private var searchRequest = 0
+    @State private var showSearchIcon = true
+    @State private var lastScrollY: CGFloat = 0
     @FocusState private var searchFocused: Bool
 
     var body: some View {
